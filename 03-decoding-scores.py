@@ -128,7 +128,7 @@ def run_spatiotemp_decoder_LOSOCV(subject_ids:list[int]):
         test_sub = f"sub-{test_subject_id:02d}"
         
         
-        train_subjects = [train_sub_id for train_sub_id in subject_ids if train_sub_id != test_subject_id]
+        train_subjects.remove(test_subject_id) # No need for the for loop
         
         # Iterate over both modalities 
         for modality in ["face_vs_scrambled", "famous_vs_unfamiliar"]:
@@ -137,7 +137,7 @@ def run_spatiotemp_decoder_LOSOCV(subject_ids:list[int]):
             model = SVC(kernel='linear', C=1, max_iter=1000)
             
             print(f"Modality: {modality}")
-
+            X, y = [], []
             # Iterate over all subjects except the testing subject to train the model
             for train_sub_id in train_subjects:
                 epochs = mne.read_epochs(op.join(meg_dir, f'sub-{train_sub_id:02d}', f'sub-{train_sub_id:02d}-epo.fif'), verbose=False)
@@ -149,15 +149,19 @@ def run_spatiotemp_decoder_LOSOCV(subject_ids:list[int]):
                     epochs = epochs[epochs.events[:,2] != event_id_to_drop]
                     events = epochs.events
                 epochs = epochs.pick(picks = "meg", exclude = "bads")
-                X = epochs.get_data(copy = False)
-                y = events[:, 2]
-                clf = make_pipeline(
-                    Scaler(epochs.info),
-                    Vectorizer(),
-                    model
-                )
-                clf.fit(X, y)
-                print(f"Fitted model for modality {modality} and subject {train_sub_id}")
+                X_subj = epochs.get_data(copy = False)
+                y_subj = events[:, 2]
+                X.append(X_subj)
+                y.append(y_subj)
+            X = np.array(X)
+            y = np.array(y)
+            clf = make_pipeline(
+                Scaler(epochs.info), # I don't know why the input is epochs.info but this might need to be changed
+                Vectorizer(),
+                model
+            )
+            clf.fit(X, y) # You fit the model on 15 subject simultaniously and test on 1 subject 
+            # print(f"Fitted model for modality {modality} and subject {train_sub_id}")
             print(f"Finished training for modality {modality}, now testing on subject {test_sub}")
             epochs = mne.read_epochs(op.join(meg_dir, test_sub, f'{test_sub}-epo.fif'), verbose=False)
             if modality == 'face_vs_scrambled':
